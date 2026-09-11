@@ -334,14 +334,36 @@ export class VaultIndex {
     return out;
   }
 
+  // Does a vault-relative path sit inside one of `folders`? Segment-aware, so
+  // "PrometheusWeb" does not match "PrometheusWebsite/..." — pass an array to
+  // cover several. Case-insensitive, because callers type folder names from
+  // memory.
+  #inFolders(notePath, folders) {
+    const p = notePath.toLowerCase();
+    for (const f of folders) {
+      const needle = f.toLowerCase().replace(/\/+$/, '');
+      if (!needle) return true;
+      if (p === needle || p.startsWith(needle + '/')) return true;
+    }
+    return false;
+  }
+
   // scope 'auto' ranks notes AND blocks, then collapses to one row per note
-  // keeping its best-scoring match. That is what recovers the ~73% of note
-  // bytes that live only in block vectors: a note whose relevant passage is
-  // 80% of the way in scores near zero note-level and near the top block-level.
-  search(queryVec, { limit = 10, minScore = 0, scope = 'auto' } = {}) {
+  // keeping its best-scoring match. That is what recovers the note bytes which
+  // live only in block vectors: a note whose relevant passage sits well past the
+  // 1894-character cap scores near zero note-level and near the top block-level.
+  //
+  // `folder` restricts the candidate pool BEFORE ranking, not after, so `limit`
+  // means "the best N inside this folder" rather than "whatever survives of the
+  // best N overall". On a vault where one project holds most of the notes, a
+  // post-filter would routinely return nothing for the smaller projects.
+  search(queryVec, { limit = 10, minScore = 0, scope = 'auto', folder = null } = {}) {
+    const folders = folder == null ? null : (Array.isArray(folder) ? folder : [folder]).filter((f) => typeof f === 'string');
+    const keep = (it) => folders === null || this.#inFolders(it.path, folders);
+
     const pools = [];
-    if (scope === 'auto' || scope === 'notes') pools.push(['note', this.items]);
-    if (scope === 'auto' || scope === 'blocks') pools.push(['block', this.blocks]);
+    if (scope === 'auto' || scope === 'notes') pools.push(['note', this.items.filter(keep)]);
+    if (scope === 'auto' || scope === 'blocks') pools.push(['block', this.blocks.filter(keep)]);
 
     const best = new Map(); // note path -> row
     for (const [kind, pool] of pools) {
@@ -565,6 +587,20 @@ export class VaultIndex {
     return { smart_sources: [...src].sort(), smart_blocks: [...blk].sort() };
   }
 
+  // Top-level folders with their note and block counts. Without this an agent has
+  // no way to learn which folder names are valid to scope a search to.
+  #folders() {
+    const counts = new Map();
+    const bump = (p, key) => {
+      const top = p.split('/')[0];
+      if (!counts.has(top)) counts.set(top, { notes: 0, blocks: 0 });
+      counts.get(top)[key]++;
+    };
+    for (const i of this.items) bump(i.path, 'notes');
+    for (const b of this.blocks) bump(b.path, 'blocks');
+    return Object.fromEntries([...counts.entries()].sort((a, b) => b[1].notes - a[1].notes));
+  }
+
   status() {
     return {
       vault: this.vault,
@@ -584,6 +620,7 @@ export class VaultIndex {
       },
       index_loaded_at: this.loadedAt,
       notes_missing_on_disk: this.#countMissing(),
+      folders: this.#folders(),
       note: 'Vectors are written only while Obsidian is running. Notes edited with Obsidian closed keep their old vector until it reopens and re-indexes; those are counted as stale above.',
       coverage_note: 'Note-level vectors cover only the first 1894 chars of a note. Block-level vectors cover the rest, chosen by the plugin to minimise uncovered text. Searching both (the default) is what makes long notes findable by their middles and ends.',
     };

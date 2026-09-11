@@ -71,7 +71,7 @@ test('exact-boundary reads do not spuriously mark truncation', () => {
 
 test('status() reports both collections and its diagnostics', () => {
   const st = idx.status();
-  assert.equal(st.embedded_notes, 4);
+  assert.equal(st.embedded_notes, 6);
   assert.equal(st.embedded_blocks, 1);
   assert.equal(st.notes_missing_on_disk, 0);
   assert.equal(st.deletion_tombstones_applied, 1);

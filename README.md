@@ -83,7 +83,22 @@ returns one row per note, tagged with which one matched.
 | `limit` | number | `10` | Clamped to 1–100 |
 | `min_score` | number | `0.5` | Cosine similarity, clamped to −1–1 |
 | `scope` | `auto` \| `notes` \| `blocks` | `auto` | `notes` covers only each note's first 1894 chars; `blocks` pinpoints passages |
+| `folder` | string \| string[] | *(all)* | Restrict to one or more folders, e.g. `"ProjectA"` or `["ProjectA/Planning", "ProjectB"]` |
 | `include_text` | boolean | `true` | For a block hit the excerpt is the matched section, not the top of the note |
+
+**Scoping a multi-project vault.** If one project holds most of the notes it
+dominates every generic query, and the smaller projects become effectively
+unreachable. `folder` filters the candidate pool *before* ranking, so `limit`
+means "the best N inside this folder" rather than "whatever survives of the best
+N overall" — a post-filter would routinely return nothing for a small project.
+Matching is on whole path segments and case-insensitive, so `"projecta"` works
+and `"Project"` does not silently match `ProjectA` and `ProjectB`. `index_status`
+lists the folders with their note and block counts, which is how a caller
+discovers what it may scope to.
+
+Scoping removes competition; it does not create relevance. Narrowing to a project
+that never discussed the topic returns its least-irrelevant notes at low scores —
+read the scores, not just the ordering.
 
 Example response — this shows the *shape*. Scores and paths depend entirely on
 your vault.
@@ -131,6 +146,7 @@ Notes related to an existing note — the Smart Connections sidebar, as a tool.
 |---|---|---|
 | `path` | string | *(required)* vault-relative, e.g. `Projects/Deucalion.md` |
 | `limit` | number | `10` (1–100) |
+| `folder` | string \| string[] | *(all)* — same matching as `search_notes` |
 
 ### `get_note`
 

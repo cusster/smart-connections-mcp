@@ -65,6 +65,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
               'notes = whole-note vectors only, which cover just the first 1894 chars of each note. ' +
               'blocks = section vectors only, for pinpointing passages.',
           },
+          folder: {
+            description:
+              'Restrict the search to one or more top-level folders or subfolders, e.g. "ProjectA" or '
+              + '["ProjectA/Planning", "ProjectB"]. Matching is on whole path segments and is '
+              + 'case-insensitive. Use this when a vault holds several projects: without it, whichever '
+              + 'project has the most notes dominates every generic query. Call index_status to see the '
+              + 'available folders and their note counts.',
+            oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
+          },
           include_text: { type: 'boolean', description: 'Include the matching text, truncated (default true)' },
         },
         required: ['query'],
@@ -80,6 +89,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           path: { type: 'string', description: 'Vault-relative path, e.g. "Projects/Deucalion.md"' },
           limit: { type: 'number', description: 'Max results, 1-100 (default 10)' },
+          folder: {
+            description: 'Restrict related notes to these folders — same matching as search_notes.',
+            oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
+          },
         },
         required: ['path'],
       },
@@ -154,6 +167,17 @@ const clampInt = (v, def, lo, hi) => {
   if (n === null) return null;
   return Math.min(hi, Math.max(lo, Math.trunc(n)));
 };
+// `folder` is either a string or an array of strings. Anything else is a caller
+// error worth naming, not something to coerce into a filter that quietly matches
+// nothing.
+const normFolders = (v) => {
+  if (v === undefined || v === null) return { value: null };
+  const arr = Array.isArray(v) ? v : [v];
+  if (!arr.length || !arr.every((f) => typeof f === 'string' && f.trim() !== '')) {
+    return { error: `folder must be a non-empty string or array of strings, got ${JSON.stringify(v)}` };
+  }
+  return { value: arr.map((f) => f.trim().replace(/^\/+|\/+$/g, '')) };
+};
 const clampNum = (v, def, lo, hi) => {
   if (v === undefined || v === null) return def;
   const n = toNumber(v);
@@ -181,16 +205,26 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       if (!['auto', 'notes', 'blocks'].includes(scope)) return err(`scope must be auto, notes or blocks, got ${JSON.stringify(scope)}`);
       const mismatch = modelMismatch();
       if (mismatch) return err(mismatch);
+      const folders = normFolders(args.folder);
+      if (folders.error) return err(folders.error);
 
       // Same library, same model, same pooling/normalize as the plugin — so the
       // query vector lands in the same space as the stored document vectors.
       const qv = await embedQuery(query);
-      const hits = index.search(qv, { limit, minScore, scope });
+      const hits = index.search(qv, { limit, minScore, scope, folder: folders.value });
+      if (!hits.length && folders.value) {
+        const known = Object.keys(index.status().folders);
+        const unknown = folders.value.filter((f) => !known.some((k) => k.toLowerCase() === f.split('/')[0].toLowerCase()));
+        if (unknown.length) {
+          return err(`no notes under ${JSON.stringify(unknown)}. Top-level folders in this vault: ${known.join(', ')}`);
+        }
+      }
       return ok({
         query,
         mode: 'semantic',
         model: index.modelKey,
         scope,
+        ...(folders.value ? { folder: folders.value } : {}),
         results: hits.map((h) => ({
           path: h.path,
           score: Number(h.score.toFixed(4)),
@@ -210,9 +244,11 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       if (limit === null) return err(`limit must be a number, got ${JSON.stringify(args.limit)}`);
       const mismatch = modelMismatch();
       if (mismatch) return err(mismatch);
+      const folders = normFolders(args.folder);
+      if (folders.error) return err(folders.error);
       const self = index.byPath(p);
       if (!self) return err(`no embedded note at "${p}". Use index_status to see what is indexed.`);
-      const hits = index.search(self.vec, { limit: limit + 1, minScore: 0 })
+      const hits = index.search(self.vec, { limit: limit + 1, minScore: 0, folder: folders.value })
         .filter((h) => h.path !== self.path)
         .slice(0, limit);
       return ok({

@@ -20,7 +20,7 @@ test('deletion tombstones remove the note (C1)', () => {
 
 test('last-wins still applies to non-deleted records', () => {
   assert.deepEqual(idx.items.map((i) => i.path).sort(),
-    ['alive.md', 'blocky.md', 'multiref.md', 'stale.md']);
+    ['ProjA/one.md', 'ProjB/two.md', 'alive.md', 'blocky.md', 'multiref.md', 'stale.md']);
 });
 
 test('embedding ref is chosen by greatest `at`, not listing order (C2)', () => {
@@ -98,13 +98,50 @@ test('a malformed line is skipped without taking the load down', async () => {
   fs.writeFileSync(p, orig + 'this is not a record at all\n"unterminated: {broken\n');
   const idx2 = new VaultIndex(root);
   await idx2.load(true);
-  assert.equal(idx2.items.length, 4);
+  assert.equal(idx2.items.length, 6);
   fs.writeFileSync(p, orig);
 });
 
 test('concurrent loads share one parse instead of each re-reading the index', async () => {
   const idx2 = new VaultIndex(root);
   const [a, b, c] = await Promise.all([idx2.load(), idx2.load(), idx2.load()]);
-  assert.equal(idx2.items.length, 4);
+  assert.equal(idx2.items.length, 6);
   assert.deepEqual([a, b, c], [undefined, undefined, undefined]);
+});
+
+test('folder scoping restricts the pool before ranking', () => {
+  // slot 0 is shared by alive.md, ProjA/one.md and ProjB/two.md, so an unscoped
+  // query matches all three and the filter is the only thing separating them.
+  const q = new Float32Array(384); q[0] = 1;
+  const all = idx.search(q, { limit: 10, minScore: 0.5 }).map((h) => h.path).sort();
+  assert.deepEqual(all, ['ProjA/one.md', 'ProjB/two.md', 'alive.md']);
+
+  assert.deepEqual(idx.search(q, { limit: 10, minScore: 0.5, folder: 'ProjA' }).map((h) => h.path),
+    ['ProjA/one.md']);
+  assert.deepEqual(idx.search(q, { limit: 10, minScore: 0.5, folder: ['ProjA', 'ProjB'] }).map((h) => h.path).sort(),
+    ['ProjA/one.md', 'ProjB/two.md']);
+});
+
+test('folder matching is case-insensitive and segment-aware', () => {
+  const q = new Float32Array(384); q[0] = 1;
+  assert.deepEqual(idx.search(q, { limit: 10, minScore: 0.5, folder: 'proja' }).map((h) => h.path),
+    ['ProjA/one.md'], 'folder names are typed from memory; match case-insensitively');
+  // "Proj" must NOT prefix-match "ProjA"/"ProjB" — that would make scoping
+  // unpredictable the moment two projects share a prefix.
+  assert.equal(idx.search(q, { limit: 10, minScore: 0.5, folder: 'Proj' }).length, 0);
+  assert.equal(idx.search(q, { limit: 10, minScore: 0.5, folder: 'ProjA/' }).length, 1, 'a trailing slash is tolerated');
+});
+
+test('limit applies WITHIN the folder, not to a post-filtered global top-N', () => {
+  const q = new Float32Array(384); q[0] = 1;
+  // limit 1 unscoped would return one of the three; scoped to ProjB it must
+  // still return ProjB's note rather than nothing.
+  assert.deepEqual(idx.search(q, { limit: 1, minScore: 0.5, folder: 'ProjB' }).map((h) => h.path),
+    ['ProjB/two.md']);
+});
+
+test('status() lists folders with counts so a caller can discover them', () => {
+  const f = idx.status().folders;
+  assert.ok(f.ProjA && f.ProjB, `expected ProjA/ProjB in ${JSON.stringify(Object.keys(f))}`);
+  assert.equal(f.ProjA.notes, 1);
 });

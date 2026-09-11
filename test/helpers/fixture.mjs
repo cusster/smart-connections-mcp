@@ -41,6 +41,13 @@ export function makeFixture(root) {
 
   for (const n of ['alive', 'ghost', 'multiref', 'blocky', 'stale', 'lost'])
     fs.writeFileSync(path.join(root, n + '.md'), `# ${n}\nline two of ${n}\nline three of ${n}\n`);
+  // Two notes in project folders, so folder scoping has something to scope. They
+  // reuse slots 0 and 1, i.e. the same vectors as alive.md and blocky.md — a
+  // query therefore matches across folders and the filter is what separates them.
+  for (const [dir, n] of [['ProjA', 'one'], ['ProjB', 'two']]) {
+    fs.mkdirSync(path.join(root, dir), { recursive: true });
+    fs.writeFileSync(path.join(root, dir, n + '.md'), `# ${n}\nbody of ${dir}/${n}\n`);
+  }
   fs.mkdirSync(path.join(root, 'sub'), { recursive: true });
   fs.writeFileSync(path.join(root, 'sub', 'ok.md'), '# fine\nreal content here\n');
 
@@ -73,6 +80,8 @@ export function makeFixture(root) {
     // file_i past the end of a 6-slot multifile: unresolvable, so the note
     // vanishes from the index and must be COUNTED rather than lost silently.
     `"smart_sources:lost.md": ${rec('lost.md', { default: { mf_old: ref('mf_old', 999, 1) } })},`,
+    `"smart_sources:ProjA/one.md": ${rec('ProjA/one.md', { default: { mf_old: ref('mf_old', 0, 1) } })},`,
+    `"smart_sources:ProjB/two.md": ${rec('ProjB/two.md', { default: { mf_old: ref('mf_old', 0, 1) } })},`,
     `"smart_sources:blocky.md": ${rec('blocky.md', { default: { mf_old: ref('mf_old', 1, 1) } }, {
       '#blocky#{1}': {
         key: 'blocky.md#blocky#{1}', lines: [1, 3], size: 300, should_embed: true,
