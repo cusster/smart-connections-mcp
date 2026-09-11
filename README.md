@@ -100,6 +100,25 @@ Scoping removes competition; it does not create relevance. Narrowing to a projec
 that never discussed the topic returns its least-irrelevant notes at low scores —
 read the scores, not just the ordering.
 
+**A scoped response says what the filter hid.** Otherwise a narrow search is
+indistinguishable from a vault with nothing on the subject, which is the same
+class of silent-wrong-answer this server works to avoid everywhere else:
+
+```json
+"folder": ["ProjectB"],
+"scoped_out": {
+  "notes_hidden_by_folder": 233,
+  "best_hidden": { "path": "Notes/2026/incident-review.md", "score": 0.6546 },
+  "better_match_outside_folder": true,
+  "hint": "A better match exists outside this folder. Re-run without `folder` if the question is not project-specific."
+}
+```
+
+`better_match_outside_folder` is true only when the filter removed something that
+scored higher than anything it returned — a warning on every scoped search would
+just train the caller to ignore it. `scoped_out` is absent entirely when no
+folder was passed.
+
 Example response — this shows the *shape*. Scores and paths depend entirely on
 your vault.
 

@@ -357,29 +357,64 @@ export class VaultIndex {
   // means "the best N inside this folder" rather than "whatever survives of the
   // best N overall". On a vault where one project holds most of the notes, a
   // post-filter would routinely return nothing for the smaller projects.
-  search(queryVec, { limit = 10, minScore = 0, scope = 'auto', folder = null } = {}) {
+  search(queryVec, opts = {}) {
+    return this.searchDetailed(queryVec, opts).results;
+  }
+
+  // Returns { results, outside }. `outside` is non-null only when a folder filter
+  // was applied, and describes what the filter HID: how many notes would have
+  // matched, and the best of them.
+  //
+  // Without that, a scoped search is indistinguishable from a thin vault. A
+  // caller narrowing to a small project gets low scores back and concludes "we
+  // never wrote about this", when the answer may be sitting at a higher score one
+  // folder over. The filter restricts the pool; it must not also hide the
+  // evidence that it did so.
+  //
+  // Ranking the full pool to compute this is nearly free — it is a dot product
+  // per vector, and per-file excerpt reads dominate a search by orders of
+  // magnitude.
+  searchDetailed(queryVec, { limit = 10, minScore = 0, scope = 'auto', folder = null } = {}) {
     const folders = folder == null ? null : (Array.isArray(folder) ? folder : [folder]).filter((f) => typeof f === 'string');
-    const keep = (it) => folders === null || this.#inFolders(it.path, folders);
 
     const pools = [];
-    if (scope === 'auto' || scope === 'notes') pools.push(['note', this.items.filter(keep)]);
-    if (scope === 'auto' || scope === 'blocks') pools.push(['block', this.blocks.filter(keep)]);
+    if (scope === 'auto' || scope === 'notes') pools.push(['note', this.items]);
+    if (scope === 'auto' || scope === 'blocks') pools.push(['block', this.blocks]);
 
-    const best = new Map(); // note path -> row
+    const best = new Map();          // in-scope: note path -> row
+    const hidden = new Map();        // filtered out, but would have matched
     for (const [kind, pool] of pools) {
       for (const { it, score } of this.#rank(queryVec, pool, minScore)) {
-        const row = {
+        const target = (folders === null || this.#inFolders(it.path, folders)) ? best : hidden;
+        const prev = target.get(it.path);
+        if (prev && prev.score >= score) continue;
+        target.set(it.path, {
           path: it.path,
           score,
           matched: kind,
           stale: it.stale,
           ...(kind === 'block' ? { block: it.subKey, lines: it.lines } : {}),
-        };
-        const prev = best.get(it.path);
-        if (!prev || score > prev.score) best.set(it.path, row);
+        });
       }
     }
-    return [...best.values()].sort((a, b) => b.score - a.score).slice(0, limit);
+
+    const results = [...best.values()].sort((a, b) => b.score - a.score).slice(0, limit);
+    if (folders === null) return { results, outside: null };
+
+    const hiddenRows = [...hidden.values()].sort((a, b) => b.score - a.score);
+    const topInside = results[0]?.score ?? -Infinity;
+    return {
+      results,
+      outside: {
+        notes_hidden_by_folder: hiddenRows.length,
+        best_hidden: hiddenRows.length
+          ? { path: hiddenRows[0].path, score: hiddenRows[0].score }
+          : null,
+        // The one case worth interrupting the caller over: the filter removed
+        // something that scored better than anything it was shown.
+        better_match_outside_folder: hiddenRows.length > 0 && hiddenRows[0].score > topInside,
+      },
+    };
   }
 
   byPath(rel) {

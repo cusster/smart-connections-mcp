@@ -145,3 +145,38 @@ test('status() lists folders with counts so a caller can discover them', () => {
   assert.ok(f.ProjA && f.ProjB, `expected ProjA/ProjB in ${JSON.stringify(Object.keys(f))}`);
   assert.equal(f.ProjA.notes, 1);
 });
+
+test('a scoped search reports what the folder filter hid', () => {
+  // slot 0 (dim 0) is shared by alive.md, ProjA/one.md and ProjB/two.md.
+  const q = new Float32Array(384); q[0] = 1;
+  const { results, outside } = idx.searchDetailed(q, { limit: 10, minScore: 0.5, folder: 'ProjA' });
+  assert.deepEqual(results.map((r) => r.path), ['ProjA/one.md']);
+  assert.equal(outside.notes_hidden_by_folder, 2, 'alive.md and ProjB/two.md matched but were filtered out');
+  assert.ok(outside.best_hidden, 'the best hidden match must be named');
+  assert.ok(['alive.md', 'ProjB/two.md'].includes(outside.best_hidden.path));
+});
+
+test('an unscoped search reports no hidden set', () => {
+  const q = new Float32Array(384); q[0] = 1;
+  assert.equal(idx.searchDetailed(q, { limit: 10, minScore: 0.5 }).outside, null);
+});
+
+test('the caller is told when the filter hid something BETTER', () => {
+  // Weight dim 1 (blocky.md, outside ProjA) above dim 0 (ProjA/one.md, inside).
+  const q = new Float32Array(384);
+  q[0] = 0.6; q[1] = 0.8;
+  const scoped = idx.searchDetailed(q, { limit: 10, minScore: 0.1, folder: 'ProjA' });
+  assert.equal(scoped.results[0].path, 'ProjA/one.md');
+  assert.ok(scoped.outside.best_hidden.score > scoped.results[0].score);
+  assert.equal(scoped.outside.better_match_outside_folder, true,
+    'a thin scoped result must not be indistinguishable from a vault with nothing on the topic');
+});
+
+test('no false alarm when the folder really does hold the best match', () => {
+  // Now weight dim 0 (inside ProjA) above dim 1 (outside).
+  const q = new Float32Array(384);
+  q[0] = 0.9; q[1] = 0.2;
+  const scoped = idx.searchDetailed(q, { limit: 10, minScore: 0.1, folder: 'ProjA' });
+  assert.equal(scoped.outside.better_match_outside_folder, false,
+    'warning on every scoped search would train the caller to ignore it');
+});

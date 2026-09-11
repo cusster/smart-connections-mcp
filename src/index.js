@@ -211,7 +211,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       // Same library, same model, same pooling/normalize as the plugin — so the
       // query vector lands in the same space as the stored document vectors.
       const qv = await embedQuery(query);
-      const hits = index.search(qv, { limit, minScore, scope, folder: folders.value });
+      const { results: hits, outside } = index.searchDetailed(qv, { limit, minScore, scope, folder: folders.value });
       if (!hits.length && folders.value) {
         const known = Object.keys(index.status().folders);
         const unknown = folders.value.filter((f) => !known.some((k) => k.toLowerCase() === f.split('/')[0].toLowerCase()));
@@ -225,6 +225,16 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         model: index.modelKey,
         scope,
         ...(folders.value ? { folder: folders.value } : {}),
+        // Say what the filter hid. A scoped search that returns thin results
+        // otherwise looks identical to a vault that has nothing on the topic.
+        ...(outside ? {
+          scoped_out: {
+            ...outside,
+            ...(outside.better_match_outside_folder ? {
+              hint: 'A better match exists outside this folder. Re-run without `folder` if the question is not project-specific.',
+            } : {}),
+          },
+        } : {}),
         results: hits.map((h) => ({
           path: h.path,
           score: Number(h.score.toFixed(4)),
