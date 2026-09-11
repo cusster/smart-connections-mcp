@@ -8,10 +8,11 @@ import path from 'node:path';
 import { VaultIndex } from '../src/vault.js';
 import { makeFixture } from './helpers/fixture.mjs';
 
-const root = path.join(os.tmpdir(), 'sc-mcp-test-paths');
+const root = path.join(os.tmpdir(), `sc-mcp-test-paths-${process.pid}`);
 makeFixture(root);
 
-const SECRET = path.join(os.tmpdir(), 'sc-mcp-outside-secret.txt');
+const SECRET_NAME = `sc-mcp-outside-secret-${process.pid}.txt`;
+const SECRET = path.join(os.tmpdir(), SECRET_NAME);
 fs.writeFileSync(SECRET, 'TOPSECRET');
 let symlinks = true;
 for (const [name, target] of [['escape.md', SECRET], ['sub/escape.md', '/etc/passwd'], ['escapedir', os.tmpdir()]]) {
@@ -26,7 +27,7 @@ test('symlinks out of the vault are blocked', { skip: symlinks ? false : 'symlin
   assert.equal(idx.readNote('sub/escape.md'), null);
   // A symlinked DIRECTORY leaves the leaf a plain file, so checking only whether
   // the final component is a symlink misses this. It leaked once; it stays tested.
-  assert.equal(idx.readNote('escapedir/sc-mcp-outside-secret.txt'), null);
+  assert.equal(idx.readNote(`escapedir/${SECRET_NAME}`), null);
 });
 
 test('traversal and absolute paths are blocked', () => {

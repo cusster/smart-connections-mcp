@@ -7,7 +7,7 @@ import path from 'node:path';
 import { VaultIndex } from '../src/vault.js';
 import { makeFixture, slotOf, BLOCK_DIM } from './helpers/fixture.mjs';
 
-const root = path.join(os.tmpdir(), 'sc-mcp-test-format');
+const root = path.join(os.tmpdir(), `sc-mcp-test-format-${process.pid}`);
 makeFixture(root);
 const idx = new VaultIndex(root);
 await idx.load();

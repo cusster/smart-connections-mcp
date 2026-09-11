@@ -13,7 +13,7 @@ import { VaultIndex } from '../src/vault.js';
 import { makeFixture, padAjson } from './helpers/fixture.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const root = path.join(os.tmpdir(), 'sc-mcp-test-concurrency');
+const root = path.join(os.tmpdir(), `sc-mcp-test-concurrency-${process.pid}`);
 const { SRC } = makeFixture(root);
 // The read has to take long enough to be interruptible at all.
 padAjson(SRC, 40000);

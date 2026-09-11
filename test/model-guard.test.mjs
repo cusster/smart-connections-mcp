@@ -55,7 +55,7 @@ function server(root, env = {}) {
   };
 }
 
-const root = path.join(os.tmpdir(), 'sc-mcp-test-modelguard');
+const root = path.join(os.tmpdir(), `sc-mcp-test-modelguard-${process.pid}`);
 makeFixture(root);
 // declare a model the query embedder is not configured for
 const envPath = path.join(root, '.smart-env', 'smart_env.json');

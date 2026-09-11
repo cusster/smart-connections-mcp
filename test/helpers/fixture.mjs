@@ -27,6 +27,11 @@ const rec = (p, embedding, blocks_data = {}) => JSON.stringify({
   class_name: 'SmartSource', path: p, last_read: { hash: 'h1' }, embedding, blocks_data,
 });
 
+// `root` MUST be unique per process — this starts by deleting it. Test files
+// suffix their fixture path with process.pid for exactly that reason: a mutation
+// harness running the suite against a copy of the source, concurrently with a
+// plain `npm test`, otherwise has one run wipe the other's fixture mid-read and
+// produce failures that do not reproduce.
 export function makeFixture(root) {
   fs.rmSync(root, { recursive: true, force: true });
   const SRC = path.join(root, '.smart-env', 'smart_sources');

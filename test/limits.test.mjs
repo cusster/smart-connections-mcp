@@ -8,7 +8,7 @@ import path from 'node:path';
 import { VaultIndex } from '../src/vault.js';
 import { makeFixture } from './helpers/fixture.mjs';
 
-const root = path.join(os.tmpdir(), 'sc-mcp-test-limits');
+const root = path.join(os.tmpdir(), `sc-mcp-test-limits-${process.pid}`);
 makeFixture(root);
 
 const LINE = 'lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod';
