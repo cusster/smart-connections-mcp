@@ -1,0 +1,43 @@
+{
+  "name": "smart-connections-mcp",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only MCP server exposing Obsidian Smart Connections (v4 / smart-env 3.x) embeddings as semantic search",
+  "license": "MIT",
+  "author": "Custer Frianeza",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cusster/smart-connections-mcp.git"
+  },
+  "homepage": "https://github.com/cusster/smart-connections-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/cusster/smart-connections-mcp/issues"
+  },
+  "keywords": [
+    "mcp",
+    "obsidian",
+    "smart-connections",
+    "semantic-search",
+    "embeddings",
+    "rag",
+    "claude-code"
+  ],
+  "bin": {
+    "smart-connections-mcp": "src/index.js"
+  },
+  "scripts": {
+    "test": "node --test test/format.test.mjs test/paths.test.mjs test/limits.test.mjs test/model-guard.test.mjs test/concurrency.test.mjs",
+    "test:vault": "node --test --test-timeout=600000 test/mcp.test.mjs",
+    "verify": "node src/verify.js",
+    "start": "node src/index.js",
+    "measure": "node scripts/measure.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "4.2.0",
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}
