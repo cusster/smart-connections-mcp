@@ -92,9 +92,12 @@ unreachable. `folder` filters the candidate pool *before* ranking, so `limit`
 means "the best N inside this folder" rather than "whatever survives of the best
 N overall" — a post-filter would routinely return nothing for a small project.
 Matching is on whole path segments and case-insensitive, so `"projecta"` works
-and `"Project"` does not silently match `ProjectA` and `ProjectB`. `index_status`
-lists the folders with their note and block counts, which is how a caller
-discovers what it may scope to.
+and `"Project"` does not silently match `ProjectA` and `ProjectB`. Any depth is
+accepted, so this works whether a vault puts projects at the top level or nests
+everything under one root. `index_status` advertises folders two levels deep with
+their note and block counts, which is how a caller discovers what it may scope
+to — a single-level listing would make `Notes/Work/ProjectA`-shaped vaults
+undiscoverable, since every note would sit under one entry.
 
 Scoping removes competition; it does not create relevance. Narrowing to a project
 that never discussed the topic returns its least-irrelevant notes at low scores —
@@ -154,7 +157,7 @@ section rather than the head of the note.
 **Score calibration** (measured on this model): `<0.60` usually noise, `0.65+` a
 real match, `0.80+` strong. One caveat — the plugin prefixes every embedding with
 the note's path as breadcrumbs, so a query that is really just a path fragment
-("Briefings 2026") scores 0.72–0.75 on folder structure alone without matching any
+(a folder name plus a year, say) scores 0.72–0.75 on folder structure alone without matching any
 content. Judge those by the excerpt, not the score.
 
 ### `related_notes`

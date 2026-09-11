@@ -180,3 +180,38 @@ test('no false alarm when the folder really does hold the best match', () => {
   assert.equal(scoped.outside.better_match_outside_folder, false,
     'warning on every scoped search would train the caller to ignore it');
 });
+
+test('folder discovery works for a vault nested under a single root', async () => {
+  // Two common vault shapes: projects at the top level, and everything under one
+  // root ("Notes/Work/ProjectA"). Reporting only the top level makes the second
+  // shape undiscoverable — one entry covering the whole vault.
+  const fs2 = await import('node:fs');
+  const nested = path.join(os.tmpdir(), `sc-mcp-test-nested-${process.pid}`);
+  makeFixture(nested);
+  const SRC = path.join(nested, '.smart-env', 'smart_sources');
+  const rows = [];
+  for (const [i, p] of ['Notes/Work/ProjA/a.md', 'Notes/Work/ProjB/b.md', 'Notes/Personal/c.md'].entries()) {
+    fs2.mkdirSync(path.join(nested, path.dirname(p)), { recursive: true });
+    fs2.writeFileSync(path.join(nested, p), `# ${p}\nbody\n`);
+    rows.push(`"smart_sources:${p}": ${JSON.stringify({
+      class_name: 'SmartSource', path: p, last_read: { hash: 'h1' },
+      embedding: { default: { mf_old: { file: 'mf_old', file_i: i, at: 1, read_hash: 'h1' } } }, blocks_data: {},
+    })},`);
+  }
+  const ajson = path.join(SRC, 'smart_sources.ajson');
+  fs2.writeFileSync(ajson, fs2.readFileSync(ajson, 'utf8') + rows.join('\n') + '\n');
+
+  const nestedIdx = new VaultIndex(nested);
+  await nestedIdx.load();
+  const folders = nestedIdx.status().folders;
+  assert.ok(folders['Notes'], 'top level must still be reported');
+  assert.ok(folders['Notes/Work'], `second level must be reported: ${JSON.stringify(Object.keys(folders))}`);
+  assert.ok(folders['Notes/Personal']);
+  assert.equal(folders['Notes/Work'].notes, 2);
+
+  // and scoping to a deep path works regardless of what is advertised
+  const q = new Float32Array(384); q[0] = 1;
+  assert.deepEqual(nestedIdx.search(q, { limit: 5, minScore: 0.5, folder: 'Notes/Work/ProjA' }).map((h) => h.path),
+    ['Notes/Work/ProjA/a.md']);
+  fs2.rmSync(nested, { recursive: true, force: true });
+});

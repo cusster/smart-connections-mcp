@@ -66,6 +66,11 @@ const RETRY_DELAY_MS = 150;
 // Caps the memoised path-resolution cache. A vault has hundreds to thousands of
 // notes; anything beyond this is caller-supplied churn, not working set.
 const PATH_CACHE_MAX = 10000;
+// How deep index_status advertises folders, and how many it lists. Two levels
+// covers the common vault shapes without turning a deeply-dated folder tree
+// (Journal/2026/W27/...) into hundreds of useless entries.
+const FOLDER_REPORT_DEPTH = 2;
+const FOLDER_REPORT_MAX = 60;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -335,7 +340,7 @@ export class VaultIndex {
   }
 
   // Does a vault-relative path sit inside one of `folders`? Segment-aware, so
-  // "PrometheusWeb" does not match "PrometheusWebsite/..." — pass an array to
+  // "Project" does not match "ProjectArchive/..." — pass an array to
   // cover several. Case-insensitive, because callers type folder names from
   // memory.
   #inFolders(notePath, folders) {
@@ -622,18 +627,32 @@ export class VaultIndex {
     return { smart_sources: [...src].sort(), smart_blocks: [...blk].sort() };
   }
 
-  // Top-level folders with their note and block counts. Without this an agent has
-  // no way to learn which folder names are valid to scope a search to.
+  // Folders with their note and block counts, so a caller can discover what it may
+  // scope a search to.
+  //
+  // Reported to two levels, not one. Vaults are organised in at least two common
+  // shapes: projects at the top ("ProjectA/...") and everything under a single
+  // root ("Notes/Work/ProjectA/..."). Reporting only the top level makes the
+  // second shape undiscoverable — every note lives under one entry, and nothing
+  // tells the caller what the real groupings are. `folder` itself accepts any
+  // depth; this only governs what gets advertised.
   #folders() {
     const counts = new Map();
     const bump = (p, key) => {
-      const top = p.split('/')[0];
-      if (!counts.has(top)) counts.set(top, { notes: 0, blocks: 0 });
-      counts.get(top)[key]++;
+      const parts = p.split('/');
+      for (let depth = 1; depth <= Math.min(FOLDER_REPORT_DEPTH, parts.length - 1); depth++) {
+        const prefix = parts.slice(0, depth).join('/');
+        if (!counts.has(prefix)) counts.set(prefix, { notes: 0, blocks: 0 });
+        counts.get(prefix)[key]++;
+      }
     };
     for (const i of this.items) bump(i.path, 'notes');
     for (const b of this.blocks) bump(b.path, 'blocks');
-    return Object.fromEntries([...counts.entries()].sort((a, b) => b[1].notes - a[1].notes));
+    return Object.fromEntries(
+      [...counts.entries()]
+        .sort((a, b) => b[1].notes - a[1].notes || a[0].localeCompare(b[0]))
+        .slice(0, FOLDER_REPORT_MAX),
+    );
   }
 
   status() {

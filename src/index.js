@@ -54,7 +54,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
               'Minimum cosine similarity (default 0.5). Measured calibration on this model: ' +
               '<0.60 is usually noise, 0.65+ is a real match, 0.80+ is strong. Caveat: the plugin ' +
               'prefixes each embedding with the note\'s path as breadcrumbs, so a query that is ' +
-              'merely a path fragment ("Briefings 2026") scores 0.72-0.75 on folder structure ' +
+              'merely a path fragment (a folder name plus a year, say) scores 0.72-0.75 on ' +
+              'folder structure ' +
               'alone without matching any content. Judge those by the excerpt, not the score.',
           },
           scope: {
